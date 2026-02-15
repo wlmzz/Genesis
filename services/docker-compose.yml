@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Camera Ingestion Worker
+  camera-ingestion:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.camera
+    container_name: genesis-camera-ingestion
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    networks:
+      - genesis-network
+    restart: unless-stopped
+    volumes:
+      - ../data:/app/data
+    # For webcam access, uncomment:
+    # devices:
+    #   - /dev/video0:/dev/video0
+
+  # Detection Worker (can scale horizontally)
+  detection:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.detection
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    networks:
+      - genesis-network
+    restart: unless-stopped
+    # For GPU support, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # Face Recognition Worker
+  face-recognition:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.face
+    container_name: genesis-face-recognition
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - genesis-network
+    restart: unless-stopped
+    volumes:
+      - ../data/faces:/app/data/faces:ro
+
+  # Analytics Worker
+  analytics:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.analytics
+    container_name: genesis-analytics
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8082:8082"
+    depends_on:
+      - redis
+    networks:
+      - genesis-network
+    restart: unless-stopped
+
+  # Storage Worker
+  storage:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.storage
+    container_name: genesis-storage
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8083:8083"
+    depends_on:
+      - redis
+    networks:
+      - genesis-network
+    restart: unless-stopped
+    volumes:
+      - ../data/outputs:/app/data/outputs
+
+  # Redis (from infrastructure)
+  redis:
+    image: redis:7-alpine
+    container_name: genesis-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - genesis-network
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+
+networks:
+  genesis-network:
+    driver: bridge

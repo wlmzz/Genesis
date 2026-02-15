@@ -1,0 +1,258 @@
+groups:
+  # Genesis System Health Alerts
+  - name: genesis_system_health
+    interval: 30s
+    rules:
+      - alert: WorkerDown
+        expr: up{job="genesis-workers"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "Genesis worker {{ $labels.service }} is down"
+          description: "Worker {{ $labels.instance }} ({{ $labels.worker_type }}) has been down for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="genesis-workers"}[5m]) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "High CPU usage on {{ $labels.service }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="genesis-workers"} > 4e9
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "High memory usage on {{ $labels.service }}"
+          description: "Memory usage is {{ $value | humanize }}B on {{ $labels.instance }}"
+
+  # Redis Event Bus Alerts
+  - name: genesis_event_bus
+    interval: 30s
+    rules:
+      - alert: HighBackpressure
+        expr: genesis_redis_pending_messages > 800
+        for: 2m
+        labels:
+          severity: warning
+          component: event-bus
+        annotations:
+          summary: "High backpressure in Redis stream {{ $labels.stream_name }}"
+          description: "{{ $value }} pending messages in stream {{ $labels.stream_name }}. Threshold is 800."
+
+      - alert: CriticalBackpressure
+        expr: genesis_redis_pending_messages > 950
+        for: 1m
+        labels:
+          severity: critical
+          component: event-bus
+        annotations:
+          summary: "CRITICAL backpressure in Redis stream {{ $labels.stream_name }}"
+          description: "{{ $value }} pending messages approaching max capacity (1000). Immediate action required!"
+
+      - alert: DeadLetterQueueGrowing
+        expr: rate(genesis_dlq_messages_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: event-bus
+        annotations:
+          summary: "Dead Letter Queue receiving failed messages"
+          description: "DLQ is receiving {{ $value }} messages/sec. Check worker error logs."
+
+      - alert: RedisConnectionFailures
+        expr: rate(genesis_redis_connection_errors_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: critical
+          component: event-bus
+        annotations:
+          summary: "Redis connection failures detected"
+          description: "{{ $value }} connection errors/sec on {{ $labels.instance }}"
+
+  # Processing Performance Alerts
+  - name: genesis_performance
+    interval: 30s
+    rules:
+      - alert: DetectionLatencyHigh
+        expr: histogram_quantile(0.95, rate(genesis_detection_latency_seconds_bucket[5m])) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          component: detection
+        annotations:
+          summary: "Detection latency p95 exceeds 2 seconds"
+          description: "p95 detection latency is {{ $value }}s (threshold: 2s)"
+
+      - alert: FaceRecognitionLatencyHigh
+        expr: histogram_quantile(0.95, rate(genesis_face_recognition_latency_seconds_bucket[5m])) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+          component: face-recognition
+        annotations:
+          summary: "Face recognition latency p95 exceeds 5 seconds"
+          description: "p95 face recognition latency is {{ $value }}s (threshold: 5s)"
+
+      - alert: FrameDropRate
+        expr: rate(genesis_frames_dropped_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          component: ingestion
+        annotations:
+          summary: "High frame drop rate on {{ $labels.camera_id }}"
+          description: "Dropping {{ $value }} frames/sec on camera {{ $labels.camera_id }}"
+
+      - alert: LowFrameRate
+        expr: rate(genesis_frames_processed_total{status="success"}[1m]) < 5
+        for: 3m
+        labels:
+          severity: warning
+          component: ingestion
+        annotations:
+          summary: "Low frame processing rate on {{ $labels.camera_id }}"
+          description: "Only {{ $value }} FPS on camera {{ $labels.camera_id }} (expected: 10-30 FPS)"
+
+  # Database Alerts
+  - name: genesis_database
+    interval: 30s
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database has been unavailable for more than 1 minute."
+
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(genesis_db_query_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow database queries detected"
+          description: "p95 query latency is {{ $value }}s (threshold: 1s)"
+
+      - alert: HighDatabaseConnections
+        expr: pg_stat_database_numbackends > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High number of database connections"
+          description: "{{ $value }} active connections (max: 100)"
+
+  # Business Metrics Alerts
+  - name: genesis_business
+    interval: 1m
+    rules:
+      - alert: AnomalyCrowdDetected
+        expr: genesis_anomaly_detected{type="crowd"} > 0
+        for: 2m
+        labels:
+          severity: info
+          component: analytics
+        annotations:
+          summary: "Unusual crowd detected in zone {{ $labels.zone_name }}"
+          description: "Anomaly score: {{ $value }} (z-score > 3)"
+
+      - alert: LongQueueTime
+        expr: genesis_queue_avg_wait_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: analytics
+        annotations:
+          summary: "Long queue wait time in {{ $labels.zone_name }}"
+          description: "Average wait time is {{ $value }}s (threshold: 5 minutes)"
+
+      - alert: HighOccupancy
+        expr: genesis_zone_occupancy_ratio{zone_name="store_main"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: analytics
+        annotations:
+          summary: "High occupancy in {{ $labels.zone_name }}"
+          description: "Occupancy ratio is {{ $value | humanizePercentage }} (threshold: 90%)"
+
+  # API Gateway Alerts
+  - name: genesis_api
+    interval: 30s
+    rules:
+      - alert: APIGatewayDown
+        expr: up{job="api-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API Gateway is down"
+          description: "API Gateway has been unavailable for more than 1 minute."
+
+      - alert: HighAPIErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API error rate"
+          description: "{{ $value | humanizePercentage }} of requests are returning 5xx errors"
+
+      - alert: APILatencyHigh
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API latency"
+          description: "p95 API latency is {{ $value }}s (threshold: 500ms)"
+
+      - alert: RateLimitExceeded
+        expr: rate(kong_http_status{code="429"}[5m]) > 1
+        for: 3m
+        labels:
+          severity: info
+          component: api
+        annotations:
+          summary: "Rate limit frequently exceeded"
+          description: "{{ $value }} rate limit rejections/sec on Kong gateway"
+
+  # Model Performance Alerts
+  - name: genesis_ml_models
+    interval: 1m
+    rules:
+      - alert: ModelDriftDetected
+        expr: genesis_model_drift_score > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: ml-ops
+        annotations:
+          summary: "Model drift detected in {{ $labels.model_name }}"
+          description: "Drift score {{ $value }} exceeds threshold (0.05). Model retraining recommended."
+
+      - alert: LowModelConfidence
+        expr: avg_over_time(genesis_prediction_confidence[10m]) < 0.6
+        for: 10m
+        labels:
+          severity: warning
+          component: ml-ops
+        annotations:
+          summary: "Low average model confidence"
+          description: "Average confidence is {{ $value | humanizePercentage }} (threshold: 60%)"

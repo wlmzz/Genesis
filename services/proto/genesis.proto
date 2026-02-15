@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package genesis;
+
+// =============================================================================
+// Face Recognition Service
+// =============================================================================
+
+service FaceRecognitionService {
+  // Recognize a face from image data
+  rpc RecognizeFace(FaceRecognitionRequest) returns (FaceRecognitionResponse);
+
+  // Register a new face
+  rpc RegisterFace(RegisterFaceRequest) returns (RegisterFaceResponse);
+
+  // Search for similar faces
+  rpc SearchSimilarFaces(SearchSimilarFacesRequest) returns (SearchSimilarFacesResponse);
+
+  // Get face information
+  rpc GetFaceInfo(GetFaceInfoRequest) returns (FaceInfo);
+
+  // List all registered faces
+  rpc ListFaces(ListFacesRequest) returns (ListFacesResponse);
+}
+
+message FaceRecognitionRequest {
+  bytes image_data = 1;           // Image bytes (JPEG, PNG, etc.)
+  string camera_id = 2;            // Camera identifier
+  int64 timestamp = 3;             // Unix timestamp
+  float confidence_threshold = 4;  // Minimum confidence (default: 0.6)
+}
+
+message FaceRecognitionResponse {
+  string person_id = 1;            // Identified person ID (empty if unknown)
+  float confidence = 2;            // Recognition confidence (0-1)
+  bool is_new_face = 3;            // True if this is a new face
+  repeated float embedding = 4;    // Face embedding vector (512-dim)
+  string message = 5;              // Status message
+}
+
+message RegisterFaceRequest {
+  bytes image_data = 1;            // Face image
+  string person_id = 2;            // Person identifier
+  map<string, string> metadata = 3; // Additional metadata (name, role, etc.)
+}
+
+message RegisterFaceResponse {
+  bool success = 1;
+  string person_id = 2;
+  string message = 3;
+  repeated float embedding = 4;
+}
+
+message SearchSimilarFacesRequest {
+  repeated float embedding = 1;    // Query embedding
+  float threshold = 2;             // Similarity threshold
+  int32 limit = 3;                 // Maximum results
+}
+
+message SearchSimilarFacesResponse {
+  repeated FaceMatch matches = 1;
+}
+
+message FaceMatch {
+  string person_id = 1;
+  float similarity = 2;            // Similarity score (0-1)
+  int64 last_seen = 3;             // Unix timestamp
+  map<string, string> metadata = 4;
+}
+
+message GetFaceInfoRequest {
+  string person_id = 1;
+}
+
+message FaceInfo {
+  string person_id = 1;
+  int64 first_seen = 2;
+  int64 last_seen = 3;
+  int32 total_appearances = 4;
+  map<string, string> metadata = 5;
+}
+
+message ListFacesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string sort_by = 3;              // "last_seen", "first_seen", "appearances"
+}
+
+message ListFacesResponse {
+  repeated FaceInfo faces = 1;
+  int32 total = 2;
+}
+
+// =============================================================================
+// Metrics Service
+// =============================================================================
+
+service MetricsService {
+  // Get current metrics snapshot
+  rpc GetCurrentMetrics(GetCurrentMetricsRequest) returns (MetricsSnapshot);
+
+  // Get metrics for time range
+  rpc GetMetricsRange(GetMetricsRangeRequest) returns (MetricsRangeResponse);
+
+  // Get aggregated metrics (hourly, daily)
+  rpc GetAggregatedMetrics(GetAggregatedMetricsRequest) returns (AggregatedMetricsResponse);
+
+  // Stream real-time metrics
+  rpc StreamMetrics(StreamMetricsRequest) returns (stream MetricsSnapshot);
+}
+
+message GetCurrentMetricsRequest {
+  string camera_id = 1;
+}
+
+message MetricsSnapshot {
+  int64 timestamp = 1;
+  string camera_id = 2;
+  int32 people_total = 3;
+  int32 queue_len = 4;
+  float avg_wait_sec = 5;
+  map<string, int32> people_by_zone = 6;
+  int32 new_faces = 7;
+  int32 recognized_faces = 8;
+}
+
+message GetMetricsRangeRequest {
+  string camera_id = 1;
+  int64 start_time = 2;
+  int64 end_time = 3;
+}
+
+message MetricsRangeResponse {
+  repeated MetricsSnapshot metrics = 1;
+}
+
+message GetAggregatedMetricsRequest {
+  string camera_id = 1;
+  int64 start_time = 2;
+  int64 end_time = 3;
+  string aggregation = 4;  // "hourly", "daily"
+}
+
+message AggregatedMetricsResponse {
+  repeated AggregatedMetric metrics = 1;
+}
+
+message AggregatedMetric {
+  int64 timestamp = 1;
+  float avg_people = 2;
+  float max_people = 3;
+  float min_people = 4;
+  float avg_queue = 5;
+  float max_queue = 6;
+  int32 total_new_faces = 7;
+  int32 total_recognized_faces = 8;
+}
+
+message StreamMetricsRequest {
+  string camera_id = 1;
+  int32 interval_seconds = 2;  // Update interval
+}
+
+// =============================================================================
+// Session Service
+// =============================================================================
+
+service SessionService {
+  // Get session by ID
+  rpc GetSession(GetSessionRequest) returns (Session);
+
+  // List sessions for a person
+  rpc ListPersonSessions(ListPersonSessionsRequest) returns (ListSessionsResponse);
+
+  // Get active sessions
+  rpc GetActiveSessions(GetActiveSessionsRequest) returns (ListSessionsResponse);
+}
+
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message Session {
+  string session_id = 1;
+  string person_id = 2;
+  string camera_id = 3;
+  int64 start_time = 4;
+  int64 end_time = 5;
+  int32 duration_seconds = 6;
+  repeated string zones_visited = 7;
+  map<string, string> metadata = 8;
+}
+
+message ListPersonSessionsRequest {
+  string person_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  int32 total = 2;
+}
+
+message GetActiveSessionsRequest {
+  string camera_id = 1;
+}
+
+// =============================================================================
+// Alert Service
+// =============================================================================
+
+service AlertService {
+  // Get recent alerts
+  rpc GetRecentAlerts(GetRecentAlertsRequest) returns (GetRecentAlertsResponse);
+
+  // Acknowledge alert
+  rpc AcknowledgeAlert(AcknowledgeAlertRequest) returns (AcknowledgeAlertResponse);
+
+  // Stream real-time alerts
+  rpc StreamAlerts(StreamAlertsRequest) returns (stream Alert);
+}
+
+message Alert {
+  int64 alert_id = 1;
+  string alert_type = 2;
+  string severity = 3;          // "info", "warning", "critical"
+  string message = 4;
+  int64 timestamp = 5;
+  string camera_id = 6;
+  string person_id = 7;
+  map<string, string> context = 8;
+  bool acknowledged = 9;
+}
+
+message GetRecentAlertsRequest {
+  string camera_id = 1;
+  string severity = 2;          // Filter by severity
+  int32 limit = 3;
+  bool unacknowledged_only = 4;
+}
+
+message GetRecentAlertsResponse {
+  repeated Alert alerts = 1;
+  int32 total = 2;
+}
+
+message AcknowledgeAlertRequest {
+  int64 alert_id = 1;
+  string acknowledged_by = 2;
+}
+
+message AcknowledgeAlertResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message StreamAlertsRequest {
+  string camera_id = 1;
+  string min_severity = 2;      // Minimum severity to stream
+}
+
+// =============================================================================
+// System Service
+// =============================================================================
+
+service SystemService {
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Get system status
+  rpc GetSystemStatus(GetSystemStatusRequest) returns (SystemStatus);
+
+  // Get worker statuses
+  rpc GetWorkerStatuses(GetWorkerStatusesRequest) returns (WorkerStatusesResponse);
+}
+
+message HealthCheckRequest {
+  string service_name = 1;
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string status = 2;
+  string version = 3;
+}
+
+message GetSystemStatusRequest {
+}
+
+message SystemStatus {
+  int32 total_cameras = 1;
+  int32 active_cameras = 2;
+  int32 total_identities = 3;
+  int32 active_sessions = 4;
+  int64 total_metrics = 5;
+  string database_size = 6;
+  map<string, WorkerStatus> workers = 7;
+}
+
+message WorkerStatus {
+  string worker_name = 1;
+  bool healthy = 2;
+  bool ready = 3;
+  int64 events_processed = 4;
+  map<string, string> stats = 5;
+}
+
+message GetWorkerStatusesRequest {
+}
+
+message WorkerStatusesResponse {
+  repeated WorkerStatus workers = 1;
+}

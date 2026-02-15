@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # MLflow Tracking Server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: genesis-mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://genesis:genesis@postgres:5432/mlflow
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlartifacts
+      - MLFLOW_SERVE_ARTIFACTS=true
+      - MLFLOW_PORT=5000
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+      - ../../mlops:/mlops
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://genesis:genesis@postgres:5432/mlflow
+      --default-artifact-root /mlartifacts
+      --host 0.0.0.0
+      --port 5000
+      --serve-artifacts
+    networks:
+      - genesis-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # PostgreSQL for MLflow backend
+  postgres:
+    image: postgres:16-alpine
+    container_name: genesis-postgres-mlflow
+    environment:
+      - POSTGRES_USER=genesis
+      - POSTGRES_PASSWORD=genesis
+      - POSTGRES_DB=mlflow
+    volumes:
+      - mlflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - genesis-network
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genesis -d mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO for artifact storage (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: genesis-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - genesis-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # DVC Remote Storage (optional)
+  dvc-server:
+    image: iterative/dvc:latest
+    container_name: genesis-dvc
+    volumes:
+      - dvc-data:/data
+      - ../../data:/datasets
+    environment:
+      - DVC_REMOTE_URL=http://minio:9000/dvc
+    networks:
+      - genesis-network
+    command: tail -f /dev/null  # Keep container running
+    restart: unless-stopped
+
+volumes:
+  mlflow-artifacts:
+    driver: local
+  mlflow-postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+  dvc-data:
+    driver: local
+
+networks:
+  genesis-network:
+    external: true

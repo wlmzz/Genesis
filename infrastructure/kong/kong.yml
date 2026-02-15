@@ -1,0 +1,272 @@
+_format_version: "3.0"
+_transform: true
+
+# =============================================================================
+# Services - Backend service definitions
+# =============================================================================
+
+services:
+  # Genesis API Gateway (FastAPI)
+  - name: genesis-api
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - api
+    routes:
+      - name: genesis-api-root
+        paths:
+          - /
+        strip_path: false
+      - name: genesis-api-v1
+        paths:
+          - /api/v1
+        strip_path: false
+      - name: genesis-docs
+        paths:
+          - /docs
+          - /redoc
+        strip_path: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-API-Key
+          credentials: true
+          max_age: 3600
+
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
+          fault_tolerant: true
+
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 10  # 10MB for image uploads
+
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-ID
+          generator: uuid
+
+      - name: prometheus
+        config:
+          per_consumer: false
+
+  # Metrics Service
+  - name: metrics-service
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - metrics
+    routes:
+      - name: metrics-current
+        paths:
+          - /api/v1/metrics/current
+        methods:
+          - GET
+      - name: metrics-range
+        paths:
+          - /api/v1/metrics/range
+        methods:
+          - GET
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
+
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - X-Service: metrics
+
+  # Face Recognition Service
+  - name: face-service
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - faces
+    routes:
+      - name: faces-list
+        paths:
+          - /api/v1/faces
+        methods:
+          - GET
+      - name: faces-recognize
+        paths:
+          - /api/v1/faces/recognize
+        methods:
+          - POST
+      - name: faces-register
+        paths:
+          - /api/v1/faces/register
+        methods:
+          - POST
+      - name: face-info
+        paths:
+          - /api/v1/faces/~
+        methods:
+          - GET
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 50  # Stricter limit for face operations
+          policy: local
+
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 5  # 5MB for face images
+
+  # Session Service
+  - name: session-service
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - sessions
+    routes:
+      - name: sessions-active
+        paths:
+          - /api/v1/sessions/active
+        methods:
+          - GET
+      - name: session-get
+        paths:
+          - /api/v1/sessions/~
+        methods:
+          - GET
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  # Alert Service
+  - name: alert-service
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - alerts
+    routes:
+      - name: alerts-list
+        paths:
+          - /api/v1/alerts
+        methods:
+          - GET
+      - name: alert-acknowledge
+        paths:
+          - /api/v1/alerts/~/acknowledge
+        methods:
+          - POST
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  # System Service
+  - name: system-service
+    url: http://api-gateway:8000
+    tags:
+      - genesis
+      - system
+    routes:
+      - name: health-check
+        paths:
+          - /health
+        methods:
+          - GET
+      - name: system-status
+        paths:
+          - /api/v1/system/status
+        methods:
+          - GET
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 300  # Higher limit for health checks
+          policy: local
+
+# =============================================================================
+# Global Plugins
+# =============================================================================
+
+plugins:
+  # Request/Response Logging
+  - name: file-log
+    config:
+      path: /var/log/kong/requests.log
+      reopen: true
+
+  # Prometheus Metrics
+  - name: prometheus
+    config:
+      per_consumer: false
+
+  # IP Restriction (optional, configure as needed)
+  # - name: ip-restriction
+  #   config:
+  #     allow:
+  #       - 127.0.0.1
+  #       - 10.0.0.0/8
+  #       - 172.16.0.0/12
+  #       - 192.168.0.0/16
+
+# =============================================================================
+# Consumers (API Key Authentication)
+# =============================================================================
+
+consumers:
+  - username: genesis-dashboard
+    custom_id: dashboard-app
+    tags:
+      - dashboard
+    keyauth_credentials:
+      - key: dashboard-api-key-change-in-production
+    acls:
+      - group: dashboard
+
+  - username: genesis-admin
+    custom_id: admin-user
+    tags:
+      - admin
+    keyauth_credentials:
+      - key: admin-api-key-change-in-production
+    acls:
+      - group: admin
+
+  - username: genesis-worker
+    custom_id: worker-service
+    tags:
+      - worker
+    keyauth_credentials:
+      - key: worker-api-key-change-in-production
+    acls:
+      - group: worker
+
+# =============================================================================
+# ACL Groups (Access Control)
+# =============================================================================
+
+# Note: ACL configuration should be added to specific routes
+# Example:
+# plugins:
+#   - name: acl
+#     config:
+#       allow:
+#         - admin
+#         - dashboard

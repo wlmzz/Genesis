@@ -1,0 +1,228 @@
+{
+  "dashboard": {
+    "title": "Genesis - Face Recognition",
+    "uid": "genesis-face-recognition",
+    "tags": ["genesis", "face-recognition", "ml"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "type": "stat",
+        "title": "Unique Faces in Database",
+        "targets": [
+          {
+            "expr": "genesis_unique_faces_total",
+            "legendFormat": "Unique Faces"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+        "type": "stat",
+        "title": "Faces Recognized (Last Hour)",
+        "targets": [
+          {
+            "expr": "sum(increase(genesis_faces_recognized_total[1h]))",
+            "legendFormat": "Recognized"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+        "type": "stat",
+        "title": "New Faces (Last Hour)",
+        "targets": [
+          {
+            "expr": "sum(increase(genesis_faces_recognized_total{is_new=\"true\"}[1h]))",
+            "legendFormat": "New Faces"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 50, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+        "type": "stat",
+        "title": "Avg Recognition Confidence",
+        "targets": [
+          {
+            "expr": "avg(genesis_face_recognition_confidence)",
+            "legendFormat": "Confidence"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.6, "color": "yellow"},
+                {"value": 0.8, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+        "type": "graph",
+        "title": "Face Recognition Latency",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(genesis_face_recognition_latency_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(genesis_face_recognition_latency_seconds_bucket[5m]))",
+            "legendFormat": "p50"
+          }
+        ],
+        "yaxes": [
+          {"label": "Seconds", "format": "s"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+        "type": "graph",
+        "title": "Face Recognition Rate",
+        "targets": [
+          {
+            "expr": "sum by (is_new) (rate(genesis_faces_recognized_total[5m])) * 60",
+            "legendFormat": "{{is_new}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Faces/min", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "type": "heatmap",
+        "title": "Confidence Score Distribution",
+        "targets": [
+          {
+            "expr": "sum(increase(genesis_face_recognition_confidence_bucket[5m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "calculation": {},
+          "cellGap": 2,
+          "color": {
+            "mode": "scheme",
+            "scheme": "Spectral",
+            "steps": 128
+          },
+          "yAxis": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "type": "graph",
+        "title": "Embedding Extraction Time",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(genesis_face_embedding_extraction_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(genesis_face_embedding_extraction_seconds_bucket[5m]))",
+            "legendFormat": "p50"
+          }
+        ],
+        "yaxes": [
+          {"label": "Seconds", "format": "s"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+        "type": "graph",
+        "title": "Vector Similarity Search Time",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(genesis_face_similarity_search_seconds_bucket[5m]))",
+            "legendFormat": "p95 pgvector search"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(genesis_face_similarity_search_seconds_bucket[5m]))",
+            "legendFormat": "p50 pgvector search"
+          }
+        ],
+        "yaxes": [
+          {"label": "Seconds", "format": "s"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+        "type": "piechart",
+        "title": "Recognition Status",
+        "targets": [
+          {
+            "expr": "sum by (is_new) (increase(genesis_faces_recognized_total[1h]))",
+            "legendFormat": "{{is_new}}"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          }
+        }
+      }
+    ]
+  }
+}

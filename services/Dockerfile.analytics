@@ -1,0 +1,28 @@
+# Dockerfile for Analytics Worker
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt infrastructure/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r infrastructure/requirements.txt
+
+# Copy application code
+COPY core/ ./core/
+COPY infrastructure/ ./infrastructure/
+COPY services/shared/ ./services/shared/
+COPY services/analytics/ ./services/analytics/
+COPY configs/ ./configs/
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8082/health || exit 1
+
+# Run worker
+CMD ["python", "services/analytics/worker.py", "--health-port", "8082"]

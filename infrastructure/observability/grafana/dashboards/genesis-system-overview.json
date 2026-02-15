@@ -1,0 +1,256 @@
+{
+  "dashboard": {
+    "title": "Genesis - System Overview",
+    "uid": "genesis-system-overview",
+    "tags": ["genesis", "overview"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "type": "stat",
+        "title": "Total Frames Processed",
+        "targets": [
+          {
+            "expr": "sum(rate(genesis_frames_processed_total{status=\"success\"}[5m])) * 60",
+            "legendFormat": "Frames/min"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 300, "color": "yellow"},
+                {"value": 600, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+        "type": "stat",
+        "title": "Faces Recognized",
+        "targets": [
+          {
+            "expr": "sum(rate(genesis_faces_recognized_total[5m])) * 60",
+            "legendFormat": "Faces/min"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+        "type": "stat",
+        "title": "Active Workers",
+        "targets": [
+          {
+            "expr": "count(up{job=\"genesis-workers\"} == 1)",
+            "legendFormat": "Workers"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 3, "color": "yellow"},
+                {"value": 5, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+        "type": "stat",
+        "title": "Redis Pending Messages",
+        "targets": [
+          {
+            "expr": "max(genesis_redis_pending_messages)",
+            "legendFormat": "Pending"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"]},
+          "text": {"valueSize": 40}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 500, "color": "yellow"},
+                {"value": 800, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+        "type": "graph",
+        "title": "Frame Processing Rate (FPS)",
+        "targets": [
+          {
+            "expr": "sum by (camera_id) (rate(genesis_frames_processed_total{status=\"success\"}[1m]))",
+            "legendFormat": "{{camera_id}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "FPS", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+        "type": "graph",
+        "title": "Detection Latency (p95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(genesis_detection_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(genesis_detection_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50"
+          }
+        ],
+        "yaxes": [
+          {"label": "Seconds", "format": "s"},
+          {"show": false}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [2.0], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "name": "High Detection Latency",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "type": "graph",
+        "title": "Redis Pending Messages by Stream",
+        "targets": [
+          {
+            "expr": "genesis_redis_pending_messages",
+            "legendFormat": "{{stream_name}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Pending", "format": "short"},
+          {"show": false}
+        ],
+        "thresholds": [
+          {"value": 800, "colorMode": "critical", "op": "gt", "fill": true, "line": true}
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "type": "graph",
+        "title": "Worker CPU Usage",
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total{job=\"genesis-workers\"}[5m]) * 100",
+            "legendFormat": "{{service}} - {{instance}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "CPU %", "format": "percent", "max": 100},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+        "type": "graph",
+        "title": "Database Query Latency (p95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (query_type, le) (rate(genesis_db_query_duration_seconds_bucket[5m])))",
+            "legendFormat": "{{query_type}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Seconds", "format": "s"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+        "type": "graph",
+        "title": "Error Rate",
+        "targets": [
+          {
+            "expr": "sum by (service) (rate(genesis_frames_processed_total{status=\"error\"}[5m]))",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Errors/sec", "format": "short"},
+          {"show": false}
+        ]
+      }
+    ]
+  }
+}

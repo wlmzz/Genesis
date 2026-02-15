@@ -1,0 +1,92 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Genesis application logs
+  - job_name: genesis-workers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: genesis-workers
+          __path__: /var/log/genesis/*.log
+
+    pipeline_stages:
+      # Parse JSON logs
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            service: service
+            worker_id: worker_id
+            camera_id: camera_id
+            event_type: event_type
+
+      # Extract log level
+      - labels:
+          level:
+          service:
+          worker_id:
+          camera_id:
+
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+
+      # Drop debug logs in production
+      - match:
+          selector: '{level="DEBUG"}'
+          action: drop
+
+  # Docker container logs
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=genesis"]
+
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'stream'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+
+    pipeline_stages:
+      # Extract log level from message
+      - regex:
+          expression: '^(?P<level>ERROR|WARN|INFO|DEBUG|CRITICAL)'
+      - labels:
+          level:
+
+  # System logs
+  - job_name: system-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/syslog
+
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\S+)\s+(?P<service>\S+):\s+(?P<message>.*)$'
+      - labels:
+          hostname:
+          service:
+      - timestamp:
+          source: timestamp
+          format: Jan _2 15:04:05

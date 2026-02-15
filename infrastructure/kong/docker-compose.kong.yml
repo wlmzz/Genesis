@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Kong Gateway Database
+  kong-database:
+    image: postgres:15-alpine
+    container_name: genesis-kong-db
+    environment:
+      POSTGRES_DB: kong
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong
+    volumes:
+      - kong-db-data:/var/lib/postgresql/data
+    networks:
+      - genesis-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kong Database Migration
+  kong-migration:
+    image: kong:3.4-alpine
+    container_name: genesis-kong-migration
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - genesis-network
+    restart: on-failure
+
+  # Kong Gateway
+  kong:
+    image: kong:3.4-alpine
+    container_name: genesis-kong
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_LOG_LEVEL: info
+    ports:
+      - "8000:8000"   # Proxy HTTP
+      - "8443:8443"   # Proxy HTTPS
+      - "8001:8001"   # Admin API HTTP
+      - "8444:8444"   # Admin API HTTPS
+    volumes:
+      - ./kong/kong.yml:/kong/declarative/kong.yml:ro
+      - kong-logs:/var/log/kong
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    networks:
+      - genesis-network
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Konga (Kong Admin UI)
+  konga:
+    image: pantsel/konga:latest
+    container_name: genesis-konga
+    environment:
+      NODE_ENV: production
+      DB_ADAPTER: postgres
+      DB_HOST: kong-database
+      DB_PORT: 5432
+      DB_USER: kong
+      DB_PASSWORD: kong
+      DB_DATABASE: konga
+    ports:
+      - "1337:1337"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - genesis-network
+    restart: unless-stopped
+
+volumes:
+  kong-db-data:
+  kong-logs:
+
+networks:
+  genesis-network:
+    external: true

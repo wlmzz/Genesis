@@ -1,0 +1,103 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'genesis-local'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - '/etc/prometheus/alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Node Exporter - Host metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+
+  # Genesis Workers - Dynamic service discovery
+  - job_name: 'genesis-workers'
+    static_configs:
+      # Camera Ingestion Workers
+      - targets: ['camera-ingestion-worker-1:8080', 'camera-ingestion-worker-2:8080']
+        labels:
+          service: 'camera-ingestion'
+          worker_type: 'ingestion'
+
+      # Detection Workers
+      - targets: ['detection-worker-1:8080', 'detection-worker-2:8080', 'detection-worker-3:8080']
+        labels:
+          service: 'detection'
+          worker_type: 'detection'
+
+      # Face Recognition Workers
+      - targets: ['face-recognition-worker-1:8080', 'face-recognition-worker-2:8080']
+        labels:
+          service: 'face-recognition'
+          worker_type: 'face'
+
+      # Analytics Workers
+      - targets: ['analytics-worker-1:8080', 'analytics-worker-2:8080']
+        labels:
+          service: 'analytics'
+          worker_type: 'analytics'
+
+      # Storage Worker
+      - targets: ['storage-worker:8080']
+        labels:
+          service: 'storage'
+          worker_type: 'storage'
+
+  # API Gateway
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8000']
+        labels:
+          service: 'api-gateway'
+
+  # Kong Gateway
+  - job_name: 'kong'
+    static_configs:
+      - targets: ['kong:8001']
+        labels:
+          service: 'kong'
+    metrics_path: '/metrics'
+
+  # PostgreSQL Exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgresql'
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+
+  # LLM Service (Ollama)
+  - job_name: 'llm-service'
+    static_configs:
+      - targets: ['llm-service:8082']
+        labels:
+          service: 'llm'

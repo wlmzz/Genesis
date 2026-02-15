@@ -1,0 +1,141 @@
+video:
+  resize_width: 960
+  process_fps: 12
+  draw: true
+
+detector:
+  model: "yolov8n.pt"
+  conf: 0.45
+  iou: 0.5
+
+# EVENT-DRIVEN ARCHITECTURE (Phase 1)
+event_driven:
+  enabled: false  # Feature flag for gradual rollout - set to true to enable microservices
+  redis_url: "redis://localhost:6379"
+  stream_prefix: "genesis"
+  consumer_group: "genesis-workers"
+
+  # Backpressure management
+  backpressure:
+    enabled: true
+    max_pending: 1000  # Maximum pending messages before hard block
+    block_threshold: 800  # Start blocking at this threshold
+
+  # Retry policy
+  retry:
+    max_attempts: 3
+    backoff_seconds: [1, 5, 15]
+    exponential_backoff: false
+    dlq_stream_suffix: "dlq"
+
+  # Frame caching (for sharing frames between workers)
+  frame_cache:
+    enabled: true
+    ttl_seconds: 60  # Frames expire after 60 seconds
+    max_size_mb: 500  # Maximum cache size
+
+tracking:
+  persist: true
+
+# FACIAL RECOGNITION
+face_recognition:
+  enabled: true
+  model: "Facenet512"      # Opzioni: VGG-Face, Facenet, Facenet512, OpenFace, DeepFace, ArcFace
+  distance_metric: "cosine"
+  detection_backend: "opencv"  # opencv, ssd, dlib, mtcnn, retinaface
+  face_size_threshold: 80   # Dimensione minima volto in pixel
+  recognition_threshold: 0.6  # Similarità threshold (0-1, più basso = più strict)
+  update_embeddings_every: 30  # Aggiorna embedding ogni N frame
+  save_unknown_faces: true     # Salva volti non riconosciuti
+
+# EMOTION DETECTION (privacy-sensitive!)
+emotion_detection:
+  enabled: false  # ATTENZIONE: molto sensibile per privacy
+  detect_every_n_frames: 60
+  save_emotions: true
+  aggregate_emotions: true  # Calcola sentiment generale
+
+# AGE/GENDER DETECTION (privacy-sensitive!)
+age_gender_detection:
+  enabled: false  # ATTENZIONE: estremamente sensibile per privacy
+  detect_every_n_frames: 120
+
+# DATABASE & IDENTITY
+identity:
+  database_path: "data/outputs/identities.db"
+  faces_dir: "data/faces"
+  auto_enroll: false  # Se true, crea automaticamente nuove identità per volti sconosciuti
+  require_min_frames: 5  # Minimo frame per confermare identità
+
+metrics:
+  export_interval_sec: 1
+  export_identity_data: true  # Esporta anche dati per identità
+
+alerts:
+  queue_len_threshold: 6
+  queue_len_duration_sec: 180
+  avg_wait_threshold_sec: 300
+  # Alert per identità specifiche
+  vip_alerts: true
+  banned_alerts: true
+  # Alert con LLM
+  llm_enhanced_alerts: true  # Usa LLM per descrizioni alert
+
+# LLM INTEGRATION (Llama via Ollama)
+llm:
+  enabled: true
+  model: "llama3.2"  # o llama2, mistral, etc (modelli Ollama)
+  base_url: "http://localhost:11434"
+  use_for_reports: true
+  use_for_alerts: true
+  use_for_analysis: true
+
+# ADVANCED ANALYTICS
+advanced_analytics:
+  enabled: true
+  heatmap:
+    enabled: true
+    save_interval_sec: 300  # Salva heatmap ogni 5 minuti
+    output_dir: "data/outputs/heatmaps"
+  path_tracking:
+    enabled: true
+    min_path_length: 3  # Minimo punti per tracciare percorso
+  anomaly_detection:
+    enabled: true
+    sensitivity: 2.0  # Z-score threshold
+  behavior_clustering:
+    enabled: true
+    min_sessions: 10  # Minimo sessioni per clustering
+  predictions:
+    enabled: true
+    horizon_minutes: 30  # Predici prossimi 30 minuti
+
+# API SERVER
+api:
+  enabled: false  # Avvia API server separatamente
+  host: "0.0.0.0"
+  port: 8000
+
+# REPORTING
+reporting:
+  auto_generate_daily: false  # Genera report automatico a fine giornata
+  report_output_dir: "data/outputs/reports"
+  use_llm: true  # Usa LLM per report narrativi
+
+# DATABASE (Phase 3)
+database:
+  # PostgreSQL with pgvector (for production)
+  postgres:
+    enabled: false  # Set to true to use PostgreSQL instead of SQLite
+    host: "localhost"
+    port: 5432
+    database: "genesis"
+    user: "genesis"
+    password: "genesis_dev_password"
+    min_pool_size: 10
+    max_pool_size: 20
+
+  # SQLite (legacy, for backward compatibility)
+  sqlite:
+    enabled: true  # Will be deprecated after Phase 3
+    path: "data/outputs/events.db"
