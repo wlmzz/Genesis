@@ -10,8 +10,10 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import redis
+from dashboard_lip_reading import render_lip_reading_section, render_lip_reading_stats
 
-st.set_page_config(page_title="Genesis Dashboard", layout="wide", page_icon="🔍")
+st.set_page_config(page_title="Genesis Dashboard", layout="wide", page_icon="")
 
 # Custom CSS
 st.markdown("""
@@ -25,30 +27,38 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔍 Genesis Dashboard")
-st.caption("Sistema avanzato di facial recognition e tracking - INTERNAL TESTING ONLY ⚠️")
+st.title("Genesis Dashboard")
+st.caption("Sistema avanzato di facial recognition e tracking - INTERNAL TESTING ONLY WARNING")
 
 # Sidebar
-st.sidebar.header("⚙️ Configurazione")
+st.sidebar.header("Configurazione")
 outdir = st.sidebar.text_input("Output directory", "data/outputs")
 csv_path = os.path.join(outdir, "metrics.csv")
 db_path = os.path.join(outdir, "identities.db")
 
-refresh = st.sidebar.checkbox("Auto-refresh (5s)", False)
+refresh = st.sidebar.checkbox("Auto-refresh (2s)", False)
 if refresh:
     import time
-    time.sleep(5)
+    time.sleep(2)
     st.rerun()
 
+# Redis connection for lip reading
+redis_client = None
+try:
+    redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+    redis_client.ping()
+except:
+    st.sidebar.warning("Redis not available - Lip reading disabled")
+
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "👥 Identità", "📈 Timeline", "🗄️ Database"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Identità", "Timeline", "Database", "Lip Reading"])
 
 # TAB 1: OVERVIEW
 with tab1:
     st.header("KPI Operativi")
 
     if not os.path.exists(csv_path):
-        st.warning(f"⚠️ Nessun file metrics.csv trovato in: {csv_path}")
+        st.warning(f"WARNING: Nessun file metrics.csv trovato in: {csv_path}")
         st.info("Avvia run_camera.py o run_video.py per generare dati")
         st.stop()
 
@@ -106,7 +116,7 @@ with tab2:
     st.header("👥 Identità Riconosciute")
 
     if not os.path.exists(db_path):
-        st.warning(f"⚠️ Database identità non trovato: {db_path}")
+        st.warning(f"WARNING: Database identità non trovato: {db_path}")
         st.info("Assicurati che face_recognition sia abilitato in settings.yaml")
     else:
         conn = sqlite3.connect(db_path)
@@ -118,7 +128,7 @@ with tab2:
             sessions_df["start_dt"] = pd.to_datetime(sessions_df["start_time"], unit="s")
             sessions_df["end_dt"] = pd.to_datetime(sessions_df["end_time"], unit="s")
 
-            st.subheader("📊 Sessioni Recenti")
+            st.subheader("Sessioni Recenti")
 
             col1, col2, col3 = st.columns(3)
             unique_persons = sessions_df["person_id"].nunique()
@@ -148,7 +158,7 @@ with tab2:
 
 # TAB 3: TIMELINE
 with tab3:
-    st.header("📈 Timeline Eventi")
+    st.header("Timeline Eventi")
 
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -191,20 +201,20 @@ with tab4:
         files_info = []
         if os.path.exists(csv_path):
             size = os.path.getsize(csv_path)
-            files_info.append({"File": "metrics.csv", "Size (KB)": f"{size/1024:.1f}", "Status": "✅"})
+            files_info.append({"File": "metrics.csv", "Size (KB)": f"{size/1024:.1f}", "Status": "OK"})
         else:
-            files_info.append({"File": "metrics.csv", "Size (KB)": "-", "Status": "❌"})
+            files_info.append({"File": "metrics.csv", "Size (KB)": "-", "Status": "NOT FOUND"})
 
         if os.path.exists(db_path):
             size = os.path.getsize(db_path)
-            files_info.append({"File": "identities.db", "Size (KB)": f"{size/1024:.1f}", "Status": "✅"})
+            files_info.append({"File": "identities.db", "Size (KB)": f"{size/1024:.1f}", "Status": "OK"})
         else:
-            files_info.append({"File": "identities.db", "Size (KB)": "-", "Status": "❌"})
+            files_info.append({"File": "identities.db", "Size (KB)": "-", "Status": "NOT FOUND"})
 
         st.dataframe(pd.DataFrame(files_info), use_container_width=True)
 
     with col2:
-        st.subheader("📊 Database Stats")
+        st.subheader("Database Stats")
         if os.path.exists(db_path):
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
@@ -228,5 +238,9 @@ with tab4:
         else:
             st.info("Database non disponibile")
 
+# TAB 5: LIP READING
+with tab5:
+    render_lip_reading_section(redis_client)
+
 st.divider()
-st.caption("Genesis © 2026 - Internal Testing Only ⚠️ Not GDPR Compliant")
+st.caption("Genesis © 2026 - Internal Testing Only - WARNING: Not GDPR Compliant")

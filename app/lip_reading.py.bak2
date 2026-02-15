@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+Lip Reading Module
+Analizza i movimenti labiali per riconoscere parole/frasi
+"""
+import numpy as np
+from collections import deque
+import cv2
+
+class LipReader:
+    """
+    Sistema di lip reading basato su landmark MediaPipe Face
+    Usa i landmark della zona bocca (punti 61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95)
+    """
+
+    # Indici dei landmark principali per le labbra (MediaPipe Face Mesh)
+    UPPER_LIP_INDICES = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291]
+    LOWER_LIP_INDICES = [146, 91, 181, 84, 17, 314, 405, 321, 375, 291]
+    MOUTH_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
+    MOUTH_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308]
+
+    def __init__(self, sequence_length=30, confidence_threshold=0.6):
+        """
+        Args:
+            sequence_length: Numero di frame da analizzare per riconoscimento
+            confidence_threshold: Soglia di confidenza per riconoscimento parole
+        """
+        self.sequence_length = sequence_length
+        self.confidence_threshold = confidence_threshold
+
+        # Buffer per sequenze temporali
+        self.mouth_openness_buffer = deque(maxlen=sequence_length)
+        self.mouth_width_buffer = deque(maxlen=sequence_length)
+        self.lip_movement_buffer = deque(maxlen=sequence_length)
+
+        # Stato corrente
+        self.is_speaking = False
+        self.current_word = None
+        self.word_confidence = 0.0
+
+        # Storia riconoscimenti
+        self.recognized_words = []
+
+    def extract_mouth_landmarks(self, face_landmarks):
+        """Estrae coordinate landmark bocca"""
+        if not face_landmarks:
+            return None
+
+        mouth_points = []
+        for idx in self.MOUTH_OUTER:
+            if idx < len(face_landmarks):
+                lm = face_landmarks[idx]
+                mouth_points.append([lm.x, lm.y, lm.z])
+
+        return np.array(mouth_points) if mouth_points else None
+
+    def calculate_mouth_openness(self, face_landmarks):
+        """
+        Calcola apertura verticale bocca usando landmark MediaPipe Face Mesh
+        Indici MediaPipe: 13 (labbro superiore), 14 (labbro inferiore)
+        """
+        if face_landmarks is None:
+            return 0.0
+
+        try:
+            # MediaPipe Face Mesh indices for mouth
+            upper_lip_idx = 13  # Upper lip center
+            lower_lip_idx = 14  # Lower lip center
+
+            if len(face_landmarks) > max(upper_lip_idx, lower_lip_idx):
+                upper = face_landmarks[upper_lip_idx]
+                lower = face_landmarks[lower_lip_idx]
+
+                # Calculate vertical distance
+                distance = abs(upper.y - lower.y)
+                return distance
+        except:
+            return 0.0
+
+        return 0.0
+
+    def calculate_mouth_width(self, face_landmarks):
+        """
+        Calcola larghezza orizzontale bocca
+        Indici MediaPipe: 61 (angolo sinistro), 291 (angolo destro)
+        """
+        if face_landmarks is None:
+            return 0.0
+
+        try:
+            left_corner_idx = 61   # Left mouth corner
+            right_corner_idx = 291  # Right mouth corner
+
+            if len(face_landmarks) > max(left_corner_idx, right_corner_idx):
+                left = face_landmarks[left_corner_idx]
+                right = face_landmarks[right_corner_idx]
+
+                # Calculate horizontal distance
+                distance = abs(right.x - left.x)
+                return distance
+        except:
+            return 0.0
+
+        return 0.0
+
+    def detect_speech_activity(self):
+        """Rileva se la persona sta parlando"""
+        if len(self.mouth_openness_buffer) < 5:
+            return False
+
+        # Analizza variazione apertura bocca
+        recent_openness = list(self.mouth_openness_buffer)[-10:]
+        std_dev = np.std(recent_openness)
+        mean_val = np.mean(recent_openness)
+
+        # Se c'è variazione significativa -> sta parlando
+        is_speaking = std_dev > 0.005 and mean_val > 0.01
+
+        return is_speaking
+
+    def recognize_word_pattern(self):
+        """
+        Riconosce pattern di parole comuni dal movimento labiale
+        Questo è un sistema semplificato - un vero lip reading richiederebbe ML
+        """
+        if len(self.mouth_openness_buffer) < self.sequence_length:
+            return None, 0.0
+
+        openness_seq = np.array(list(self.mouth_openness_buffer))
+        width_seq = np.array(list(self.mouth_width_buffer))
+
+        # Pattern semplici per parole comuni
+        max_openness = np.max(openness_seq)
+        avg_openness = np.mean(openness_seq)
+        openness_variation = np.std(openness_seq)
+
+        # Riconoscimento pattern base
+        word = None
+        confidence = 0.0
+
+        # Pattern: "Sì" - apertura moderata, singola
+        if 0.04 < max_openness < 0.08 and openness_variation < 0.015:
+            word = "Sì"
+            confidence = 0.7
+
+        # Pattern: "No" - movimento orizzontale testa + bocca chiusa
+        elif max_openness < 0.03 and openness_variation < 0.01:
+            word = "No"
+            confidence = 0.65
+
+        # Pattern: "Ciao" - apertura ampia, movimento ripetuto
+        elif max_openness > 0.08 and openness_variation > 0.02:
+            word = "Ciao"
+            confidence = 0.6
+
+        # Pattern: parlato generico
+        elif openness_variation > 0.015:
+            word = "Parlando..."
+            confidence = 0.5
+
+        return word, confidence
+
+    def process_frame(self, face_landmarks):
+        """
+        Processa un frame e aggiorna lo stato del lip reading
+
+        Returns:
+            dict: {
+                'is_speaking': bool,
+                'word': str or None,
+                'confidence': float,
+                'mouth_openness': float,
+                'mouth_state': str
+            }
+        """
+        result = {
+            'is_speaking': False,
+            'word': None,
+            'confidence': 0.0,
+            'mouth_openness': 0.0,
+            'mouth_state': 'closed'
+        }
+
+        if not face_landmarks:
+            return result
+
+        # Calcola metriche direttamente dai face landmarks
+        openness = self.calculate_mouth_openness(face_landmarks)
+        width = self.calculate_mouth_width(face_landmarks)
+
+        if openness > 0 or width > 0:
+
+            # Aggiungi a buffer
+            self.mouth_openness_buffer.append(openness)
+            self.mouth_width_buffer.append(width)
+
+            # Rileva attività parlato
+            is_speaking = self.detect_speech_activity()
+
+            # Determina stato bocca (valori MediaPipe normalizzati 0-1)
+            mouth_state = 'closed'
+            if openness > 0.008:  # Abbassato da 0.05
+                mouth_state = 'open'
+            elif openness > 0.01:  # Abbassato da 0.02
+                mouth_state = 'slightly_open'
+
+            # Riconosci parola se sta parlando
+            word, confidence = None, 0.0
+            if is_speaking:
+                word, confidence = self.recognize_word_pattern()
+
+                # Salva se confidenza sufficiente
+                if word and confidence >= self.confidence_threshold:
+                    self.current_word = word
+                    self.word_confidence = confidence
+                    self.recognized_words.append({
+                        'word': word,
+                        'confidence': confidence,
+                        'timestamp': len(self.recognized_words)
+                    })
+
+            result.update({
+                'is_speaking': is_speaking,
+                'word': word if confidence >= self.confidence_threshold else None,
+                'confidence': confidence,
+                'mouth_openness': openness,
+                'mouth_state': mouth_state
+            })
+
+        return result
+
+    def get_recent_words(self, n=5):
+        """Ottieni ultime N parole riconosciute"""
+        return self.recognized_words[-n:] if self.recognized_words else []
+
+    def draw_lip_reading_info(self, frame, result, position=(10, 100)):
+        """Disegna informazioni lip reading sul frame"""
+        x, y = position
+
+        # Sfondo semi-trasparente
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x-5, y-25), (x+350, y+120), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+
+        # Titolo
+        cv2.putText(frame, "LIP READING", (x, y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+        y += 30
+
+        # Stato parlato
+        status_color = (0, 255, 0) if result['is_speaking'] else (100, 100, 100)
+        status_text = "PARLANDO" if result['is_speaking'] else "SILENZIO"
+        cv2.putText(frame, f"Status: {status_text}", (x, y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+
+        y += 25
+
+        # Parola riconosciuta
+        if result['word']:
+            word_color = (0, 255, 0) if result['confidence'] > 0.7 else (0, 200, 200)
+            cv2.putText(frame, f"Parola: {result['word']}", (x, y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, word_color, 2)
+            y += 25
+            cv2.putText(frame, f"Confidenza: {result['confidence']:.1%}", (x, y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        else:
+            cv2.putText(frame, "Parola: ---", (x, y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150), 2)
+
+        y += 25
+
+        # Stato bocca
+        cv2.putText(frame, f"Bocca: {result['mouth_state']}", (x, y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        return frame
